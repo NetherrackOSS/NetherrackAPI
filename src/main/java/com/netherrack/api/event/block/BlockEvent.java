@@ -10,8 +10,7 @@ import com.netherrack.api.world.BlockSnapshot;
  * Base for an event about one block and the player changing it.
  * <p>
  * These events are delivered on the player's network thread, where Netherrack currently handles
- * block actions. Handlers must return quickly; scheduling for slower work will be added in a
- * later phase.
+ * block actions. Handlers must return quickly; use the server scheduler for slower work.
  */
 public abstract class BlockEvent extends Event implements Cancellable {
 

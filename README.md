@@ -5,8 +5,9 @@ Plugin API for [Netherrack](https://github.com/NetherrackOSS/Netherrack), an exp
 Minecraft: Bedrock Edition server written in Java 17.
 
 This repository contains the plugin contracts: lifecycle callbacks, listeners and events, small
-`Server`, `Player`, `World` and `BlockSnapshot` interfaces, plus commands, a tick scheduler and a
-permission layer. See `PLUGIN_API_PLAN.md` in the server repository for the design.
+`Server`, `Player`, `World` and `BlockSnapshot` interfaces, player locations and game modes, plus
+commands, a tick scheduler and a permission layer. See `PLUGIN_API_PLAN.md` in the server repository
+for the design.
 
 ## Using it in a plugin
 
@@ -111,6 +112,24 @@ The first events are:
 Events are delivered synchronously on the thread doing the action: startup events on the main
 startup thread, shutdown events on the shutdown thread, and player and block events on that
 player's network thread. A handler should return quickly; use the scheduler for delayed work.
+
+## Players, worlds and blocks
+
+`Player.getLocation()` returns a `Location`: x/y/z at the player's feet, plus yaw and pitch in
+degrees. `teleport(Location)` moves the player, their loaded chunks and everyone else's view of
+them, so a plugin never has to send movement packets itself.
+
+```java
+Location here = player.getLocation();
+player.teleport(new Location(here.getX(), here.getY() + 10, here.getZ(), here.getYaw(), here.getPitch()));
+player.setGameMode(GameMode.CREATIVE);
+```
+
+`World.getBlock(x, y, z)` and `setBlock(x, y, z, snapshot)` use block coordinates and return
+immutable `BlockSnapshot` values. A snapshot keeps the block's identifier, its vanilla state hash
+and its properties, so a plugin can inspect `getState("facing")` or pass the same snapshot back to
+`setBlock` without depending on protocol classes. Passing `null` to `setBlock` clears a block to
+air. `GameMode` ids match Bedrock's: survival 0, creative 1, adventure 2 and spectator 6.
 
 ## Commands
 

@@ -3,6 +3,7 @@ import com.netherrack.api.Server;
 import com.netherrack.api.command.Command;
 import com.netherrack.api.command.CommandSender;
 import com.netherrack.api.command.PluginCommand;
+import com.netherrack.api.entity.GameMode;
 import com.netherrack.api.entity.Player;
 import com.netherrack.api.event.Event;
 import com.netherrack.api.event.EventException;
@@ -33,6 +34,7 @@ import com.netherrack.api.scheduler.Scheduler;
 import com.netherrack.api.scheduler.TaskHandler;
 import com.netherrack.api.world.BlockPosition;
 import com.netherrack.api.world.BlockSnapshot;
+import com.netherrack.api.world.Location;
 import com.netherrack.api.world.World;
 
 import java.nio.file.Files;
@@ -55,6 +57,7 @@ public final class PluginApiTest {
         descriptionParsing();
         permissions();
         commandDeclarations();
+        worldTypes();
         lifecycle();
         configRoundTrip();
         events();
@@ -304,6 +307,50 @@ public final class PluginApiTest {
         check("missing executor is not handled", command.execute(null, "hello", new String[0]), false);
     }
 
+    private static void worldTypes() {
+        Location location = new Location(3.8, -2.3, 9.9, 90f, -12f);
+        check("location x", location.getX(), 3.8);
+        check("location y", location.getY(), -2.3);
+        check("location z", location.getZ(), 9.9);
+        check("location yaw", location.getYaw(), 90f);
+        check("location pitch", location.getPitch(), -12f);
+        BlockPosition block = location.toBlockPosition();
+        check("location block x", block.getX(), 3);
+        check("location block y", block.getY(), -3);
+        check("location block z", block.getZ(), 9);
+
+        check("game mode id", GameMode.SPECTATOR.getId(), 6);
+        check("game mode lookup", GameMode.fromId(2), GameMode.ADVENTURE);
+        check("unknown game mode", GameMode.fromId(99), null);
+
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("FACING", "north");
+        properties.put("top_slot_bit", false);
+        BlockSnapshot stair = new BlockSnapshot("minecraft:oak_stairs", 123, properties);
+        check("snapshot state", stair.getState("facing"), "north");
+        check("snapshot bit", stair.getState("TOP_SLOT_BIT"), false);
+        check("snapshot state count", stair.getStates().size(), 2);
+        check("snapshot states immutable", throwsUnsupported(
+                () -> stair.getStates().put("waterlogged", true)), true);
+        check("snapshot without states", new BlockSnapshot("minecraft:stone", 1).getStates().isEmpty(), true);
+
+        StubPlayer player = new StubPlayer();
+        Location destination = new Location(10, 64, -5, 180f, 0f);
+        player.teleport(destination);
+        check("player teleport", player.getLocation(), destination);
+        player.setGameMode(GameMode.CREATIVE);
+        check("player game mode", player.getGameMode(), GameMode.CREATIVE);
+    }
+
+    private static boolean throwsUnsupported(Runnable action) {
+        try {
+            action.run();
+            return false;
+        } catch (UnsupportedOperationException e) {
+            return true;
+        }
+    }
+
     private static boolean throwsIllegalState(Runnable action) {
         try {
             action.run();
@@ -461,6 +508,9 @@ public final class PluginApiTest {
     }
 
     private static final class StubPlayer extends TestPermissible implements Player {
+        private Location location = new Location(0, 64, 0);
+        private GameMode gameMode = GameMode.SURVIVAL;
+
         @Override
         public String getName() {
             return "Tester";
@@ -479,6 +529,26 @@ public final class PluginApiTest {
         @Override
         public World getWorld() {
             return null;
+        }
+
+        @Override
+        public Location getLocation() {
+            return location;
+        }
+
+        @Override
+        public void teleport(Location location) {
+            this.location = location;
+        }
+
+        @Override
+        public GameMode getGameMode() {
+            return gameMode;
+        }
+
+        @Override
+        public void setGameMode(GameMode gameMode) {
+            this.gameMode = gameMode;
         }
 
         @Override

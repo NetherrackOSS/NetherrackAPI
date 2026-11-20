@@ -1,6 +1,7 @@
 package com.netherrack.api.entity;
 
 import com.netherrack.api.permission.Permissible;
+import com.netherrack.api.world.Location;
 import com.netherrack.api.world.World;
 
 import java.util.UUID;
@@ -21,6 +22,19 @@ public interface Player extends Permissible {
     String getXuid();
 
     World getWorld();
+
+    /**
+     * Where the player is, at feet height and with the yaw and pitch their client reports.
+     * The returned value is a copy; changing it does not move the player.
+     */
+    Location getLocation();
+
+    /** Moves the player, their chunk view and everyone else's view of them in one step. */
+    void teleport(Location location);
+
+    GameMode getGameMode();
+
+    void setGameMode(GameMode gameMode);
 
     void sendMessage(String message);
 
