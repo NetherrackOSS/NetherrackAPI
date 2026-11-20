@@ -1,4 +1,5 @@
 # NetherrackAPI
+[![](https://jitpack.io/v/NetherrackOSS/NetherrackAPI.svg)](https://jitpack.io/#NetherrackOSS/NetherrackAPI)
 
 Plugin API for [Netherrack](https://github.com/NetherrackOSS/Netherrack), an experimental
 Minecraft: Bedrock Edition server written in Java 17.
