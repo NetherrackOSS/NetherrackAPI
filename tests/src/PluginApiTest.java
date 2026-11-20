@@ -1,5 +1,8 @@
 import com.netherrack.api.ApiVersion;
 import com.netherrack.api.Server;
+import com.netherrack.api.command.Command;
+import com.netherrack.api.command.CommandSender;
+import com.netherrack.api.command.PluginCommand;
 import com.netherrack.api.entity.Player;
 import com.netherrack.api.event.Event;
 import com.netherrack.api.event.EventException;
@@ -12,6 +15,12 @@ import com.netherrack.api.event.player.PlayerChatEvent;
 import com.netherrack.api.event.player.PlayerEvent;
 import com.netherrack.api.event.player.PlayerJoinEvent;
 import com.netherrack.api.event.player.PlayerQuitEvent;
+import com.netherrack.api.permission.Permission;
+import com.netherrack.api.permission.PermissionAttachment;
+import com.netherrack.api.permission.PermissionDefault;
+import com.netherrack.api.permission.PermissionManager;
+import com.netherrack.api.permission.Permissible;
+import com.netherrack.api.permission.PermissionState;
 import com.netherrack.api.plugin.Plugin;
 import com.netherrack.api.plugin.PluginBase;
 import com.netherrack.api.plugin.PluginConfig;
@@ -20,6 +29,8 @@ import com.netherrack.api.plugin.PluginDescriptionException;
 import com.netherrack.api.plugin.PluginLoadOrder;
 import com.netherrack.api.plugin.PluginLogger;
 import com.netherrack.api.plugin.PluginManager;
+import com.netherrack.api.scheduler.Scheduler;
+import com.netherrack.api.scheduler.TaskHandler;
 import com.netherrack.api.world.BlockPosition;
 import com.netherrack.api.world.BlockSnapshot;
 import com.netherrack.api.world.World;
@@ -28,7 +39,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -40,6 +53,8 @@ public final class PluginApiTest {
     public static void main(String[] args) throws Exception {
         versions();
         descriptionParsing();
+        permissions();
+        commandDeclarations();
         lifecycle();
         configRoundTrip();
         events();
@@ -73,6 +88,13 @@ public final class PluginApiTest {
                 softdepend:
                   - Optional
                   - Another
+                commands:
+                  hello:
+                    description: Says hello
+                    aliases: [hi, greet]
+                    usage: /hello [name]
+                    permission: example.hello
+                  ping: Pongs back
                 """);
         check("name", description.getName(), "ExamplePlugin");
         check("version", description.getVersion(), "1.2.3");
@@ -84,6 +106,14 @@ public final class PluginApiTest {
         check("inline list", description.getDepend(), List.of("First", "Second"));
         check("indented list", description.getSoftDepend(), List.of("Optional", "Another"));
         check("absent list", description.getLoadBefore(), List.of());
+        check("command count", description.getCommands().size(), 2);
+        check("first command", description.getCommands().get(0).getName(), "hello");
+        check("command description", description.getCommands().get(0).getDescription(), "Says hello");
+        check("command aliases", description.getCommands().get(0).getAliases(), List.of("hi", "greet"));
+        check("command usage", description.getCommands().get(0).getUsage(), "/hello [name]");
+        check("command permission", description.getCommands().get(0).getPermission(), "example.hello");
+        check("compact command", description.getCommands().get(1).getDescription(), "Pongs back");
+        check("default usage", description.getCommands().get(1).getUsage(), "/ping");
 
         PluginDescription defaults = PluginDescription.parse("name: X\nversion: 1\nmain: X\n");
         check("default load order", defaults.getLoadOrder(), PluginLoadOrder.POSTWORLD);
@@ -203,6 +233,84 @@ public final class PluginApiTest {
         StubManager invalid = new StubManager();
         check("invalid handler rejected", throwsEventException(() ->
                 invalid.registerEvents(new InvalidListener(), plugin)), true);
+    }
+
+    private static void permissions() {
+        StubPlugin plugin = new StubPlugin();
+        StubPermissionManager registry = new StubPermissionManager();
+        Permission node = new Permission("example.hello", "Use /hello", PermissionDefault.OPERATOR,
+                plugin);
+        registry.registerPermission(node);
+        check("registered permission", registry.getPermission("EXAMPLE.HELLO"), node);
+        check("permission default", node.getDefault(), PermissionDefault.OPERATOR);
+
+        TestPermissible subject = new TestPermissible();
+        PermissionAttachment attachment = subject.addAttachment(plugin);
+        check("attachment owner", attachment.getPlugin(), plugin);
+        check("undefined by default", subject.getPermissionValue("example.hello"), PermissionState.UNDEFINED);
+        check("undefined means no permission", subject.hasPermission("example.hello"), false);
+
+        attachment.setPermission("example.hello", true);
+        check("attachment allows", subject.getPermissionValue("example.hello"), PermissionState.ALLOW);
+        check("allow checked", subject.hasPermission("example.hello"), true);
+        attachment.setPermission("example.hello", false);
+        check("attachment denies", subject.getPermissionValue("example.hello"), PermissionState.DENY);
+        check("deny checked", subject.hasPermission("example.hello"), false);
+        attachment.unsetPermission("example.hello");
+        check("unset returns to undefined", subject.getPermissionValue("EXAMPLE.HELLO"),
+                PermissionState.UNDEFINED);
+
+        attachment.remove();
+        check("removed attachment", attachment.isRemoved(), true);
+        check("removed attachment detached", subject.attachments.isEmpty(), true);
+        check("using removed attachment rejected", throwsIllegalState(() ->
+                attachment.setPermission("example.hello", true)), true);
+
+        registry.unregisterPermissions(plugin);
+        check("unregister by plugin", registry.getPermission("example.hello"), null);
+    }
+
+    private static void commandDeclarations() {
+        StubPlugin plugin = new StubPlugin();
+        PluginDescription desc = PluginDescription.parse("""
+                name: CommandPlugin
+                version: 1
+                main: CommandPlugin
+                commands:
+                  hello:
+                    description: Says hello
+                    aliases: [hi]
+                    usage: /hello [name]
+                    permission: example.hello
+                """);
+        PluginCommand command = new PluginCommand(plugin, desc.getCommands().get(0));
+        check("command name", command.getName(), "hello");
+        check("command aliases", command.getAliases(), List.of("hi"));
+        check("command description", command.getDescription(), "Says hello");
+        check("command usage", command.getUsage(), "/hello [name]");
+        check("command permission", command.getPermission(), "example.hello");
+        check("command owner", command.getPlugin(), plugin);
+
+        boolean[] called = {false};
+        command.setExecutor((sender, cmd, label, args) -> {
+            called[0] = true;
+            check("executor gets label", label, "hi");
+            return true;
+        });
+        check("executor result", command.execute(null, "hi", new String[0]), true);
+        check("executor called", called[0], true);
+
+        command.setExecutor(null);
+        check("missing executor is not handled", command.execute(null, "hello", new String[0]), false);
+    }
+
+    private static boolean throwsIllegalState(Runnable action) {
+        try {
+            action.run();
+            return false;
+        } catch (IllegalStateException e) {
+            return true;
+        }
     }
 
     private static boolean throwsDescription(String yaml) {
@@ -352,7 +460,7 @@ public final class PluginApiTest {
         }
     }
 
-    private static final class StubPlayer implements Player {
+    private static final class StubPlayer extends TestPermissible implements Player {
         @Override
         public String getName() {
             return "Tester";
@@ -418,6 +526,16 @@ public final class PluginApiTest {
         public Collection<Player> getPlayers() {
             return List.of();
         }
+
+        @Override
+        public Scheduler getScheduler() {
+            return new StubScheduler();
+        }
+
+        @Override
+        public PermissionManager getPermissionManager() {
+            return new StubPermissionManager();
+        }
     }
 
     private static final class StubManager implements PluginManager {
@@ -439,6 +557,11 @@ public final class PluginApiTest {
         }
 
         @Override
+        public PluginCommand getCommand(String name, Plugin plugin) {
+            return null;
+        }
+
+        @Override
         public void registerEvents(Listener listener, Plugin plugin) {
             events.registerEvents(listener, plugin);
         }
@@ -456,6 +579,98 @@ public final class PluginApiTest {
         @Override
         public void callEvent(Event event) {
             events.callEvent(event);
+        }
+    }
+
+    /** Just enough permission bookkeeping to exercise PermissionAttachment in the API tests. */
+    private static class TestPermissible implements Permissible {
+
+        final List<PermissionAttachment> attachments = new ArrayList<>();
+        private final Map<String, PermissionState> values = new LinkedHashMap<>();
+
+        @Override
+        public PermissionState getPermissionValue(String node) {
+            if (node == null) {
+                return PermissionState.UNDEFINED;
+            }
+            return values.getOrDefault(node.toLowerCase(java.util.Locale.ROOT), PermissionState.UNDEFINED);
+        }
+
+        @Override
+        public PermissionAttachment addAttachment(Plugin plugin) {
+            PermissionAttachment attachment = new PermissionAttachment(this, plugin);
+            attachments.add(attachment);
+            return attachment;
+        }
+
+        @Override
+        public void removeAttachment(PermissionAttachment attachment) {
+            attachments.remove(attachment);
+        }
+
+        @Override
+        public void recalculatePermissions() {
+            values.clear();
+            for (PermissionAttachment attachment : attachments) {
+                values.putAll(attachment.getPermissions());
+            }
+        }
+    }
+
+    private static final class StubPermissionManager implements PermissionManager {
+
+        private final Map<String, Permission> permissions = new LinkedHashMap<>();
+
+        @Override
+        public Permission getPermission(String node) {
+            return node == null ? null : permissions.get(node.toLowerCase(java.util.Locale.ROOT));
+        }
+
+        @Override
+        public Collection<Permission> getPermissions() {
+            return List.copyOf(permissions.values());
+        }
+
+        @Override
+        public void registerPermission(Permission permission) {
+            permissions.put(permission.getKey(), permission);
+        }
+
+        @Override
+        public void unregisterPermission(Permission permission) {
+            permissions.remove(permission.getKey(), permission);
+        }
+
+        @Override
+        public void unregisterPermissions(Plugin plugin) {
+            permissions.values().removeIf(permission -> permission.getPlugin() == plugin);
+        }
+    }
+
+    /** The API test never ticks, but a Server has to return something for getScheduler(). */
+    private static final class StubScheduler implements Scheduler {
+
+        @Override
+        public TaskHandler runTask(Plugin plugin, Runnable task) {
+            return null;
+        }
+
+        @Override
+        public TaskHandler runTaskLater(Plugin plugin, Runnable task, long delayTicks) {
+            return null;
+        }
+
+        @Override
+        public TaskHandler runTaskTimer(Plugin plugin, Runnable task, long delayTicks, long periodTicks) {
+            return null;
+        }
+
+        @Override
+        public void cancelTask(int taskId) {
+        }
+
+        @Override
+        public void cancelTasks(Plugin plugin) {
         }
     }
 }

@@ -9,16 +9,18 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
  * The contents of a plugin's plugin.yml.
  * <p>
  * Only the YAML this needs is understood: top-level "key: value" lines, lists written either
- * inline as "[a, b]" or as indented "- a" lines, quoted values, and # comments. Keeping the
- * reader here rather than adding a YAML dependency means plugin jars stay small and the API
- * keeps its promise of having no dependencies. Unknown keys are ignored so a plugin can carry
- * settings for a newer server without failing on an older one.
+ * inline as "[a, b]" or as indented "- a" lines, and the nested {@code commands:} block. Values may
+ * be quoted, and # starts a comment outside quotes. Keeping the reader here rather than adding a
+ * YAML dependency means plugin jars stay small and the API keeps its promise of having no
+ * dependencies. Unknown keys and unknown nested sections are ignored, so a plugin can carry settings
+ * for a newer server without failing on an older one.
  */
 public final class PluginDescription {
 
@@ -32,8 +34,10 @@ public final class PluginDescription {
     private final List<String> depend;
     private final List<String> softDepend;
     private final List<String> loadBefore;
+    private final List<CommandDescription> commands;
 
-    private PluginDescription(Map<String, String> values, Map<String, List<String>> lists) {
+    private PluginDescription(Map<String, String> values, Map<String, List<String>> lists,
+                              List<CommandDescription> commands) {
         this.name = required(values, "name");
         if (!name.matches("[A-Za-z0-9._-]+")) {
             throw new PluginDescriptionException("plugin.yml name \"" + name
@@ -48,6 +52,7 @@ public final class PluginDescription {
         this.depend = list(values, lists, "depend");
         this.softDepend = list(values, lists, "softdepend");
         this.loadBefore = list(values, lists, "loadbefore");
+        this.commands = commands;
     }
 
     public String getName() {
@@ -90,6 +95,11 @@ public final class PluginDescription {
         return loadBefore;
     }
 
+    /** The commands declared in plugin.yml, in the order they were written. */
+    public List<CommandDescription> getCommands() {
+        return commands;
+    }
+
     /** Reads plugin.yml from a file, wrapping IO failures so the loader can report them. */
     public static PluginDescription fromFile(Path path) {
         try {
@@ -103,7 +113,12 @@ public final class PluginDescription {
     public static PluginDescription parse(String content) {
         Map<String, String> values = new LinkedHashMap<>();
         Map<String, List<String>> lists = new LinkedHashMap<>();
-        String currentList = null;
+        Map<String, CommandBuilder> commandBuilders = new LinkedHashMap<>();
+        String section = null;
+        String currentTopList = null;
+        String currentCommand = null;
+        String commandList = null;
+
         for (String line : content.split("\\R")) {
             String withoutComment = withoutComment(line);
             if (withoutComment.isBlank()) {
@@ -111,36 +126,88 @@ public final class PluginDescription {
             }
             String text = withoutComment.strip();
             int indent = withoutComment.length() - withoutComment.stripLeading().length();
-            if (text.startsWith("- ") && indent > 0 && currentList != null) {
-                lists.computeIfAbsent(currentList, key -> new ArrayList<>()).add(unquote(text.substring(2).strip()));
+
+            if (text.startsWith("- ") && indent > 0) {
+                if (currentTopList != null) {
+                    lists.computeIfAbsent(currentTopList, key -> new ArrayList<>())
+                            .add(unquote(text.substring(2).strip()));
+                } else if (commandList != null && currentCommand != null) {
+                    commandBuilders.get(currentCommand).aliases.add(unquote(text.substring(2).strip()));
+                }
                 continue;
             }
+
             int colon = text.indexOf(':');
             if (colon < 0) {
                 throw new PluginDescriptionException("plugin.yml line isn't \"key: value\": " + line);
             }
             String key = text.substring(0, colon).strip();
             String value = text.substring(colon + 1).strip();
-            if (indent > 0) {
-                // Nested maps (such as plugin.yml's commands block) belong to a later phase.
+
+            if (indent == 0) {
+                section = value.isEmpty() ? key : null;
+                currentTopList = value.isEmpty() ? key : null;
+                currentCommand = null;
+                commandList = null;
+                if (value.isEmpty()) {
+                    values.putIfAbsent(key, "");
+                } else if (value.startsWith("[") && value.endsWith("]")) {
+                    lists.put(key, inlineList(value));
+                } else {
+                    values.put(key, unquote(value));
+                }
                 continue;
             }
-            if (value.startsWith("[") && value.endsWith("]")) {
-                List<String> inline = new ArrayList<>();
-                String body = value.substring(1, value.length() - 1).strip();
-                if (!body.isEmpty()) {
-                    for (String item : body.split(",")) {
-                        inline.add(unquote(item.strip()));
+
+            if (!"commands".equals(section)) {
+                continue;
+            }
+            if (indent <= 2) {
+                if (commandBuilders.containsKey(key)) {
+                    throw new PluginDescriptionException("duplicate command \"" + key + "\" in plugin.yml");
+                }
+                CommandBuilder builder = new CommandBuilder(key);
+                if (!value.isEmpty()) {
+                    builder.description = unquote(value);
+                }
+                commandBuilders.put(key, builder);
+                currentCommand = key;
+                currentTopList = null;
+                commandList = null;
+                continue;
+            }
+            if (currentCommand == null) {
+                continue;
+            }
+            CommandBuilder builder = commandBuilders.get(currentCommand);
+            switch (key) {
+                case "description" -> {
+                    builder.description = unquote(value);
+                    commandList = null;
+                }
+                case "usage" -> {
+                    builder.usage = unquote(value);
+                    commandList = null;
+                }
+                case "permission" -> {
+                    builder.permission = unquote(value);
+                    commandList = null;
+                }
+                case "aliases" -> {
+                    commandList = value.isEmpty() ? "aliases" : null;
+                    if (!value.isEmpty()) {
+                        builder.aliases.addAll(inlineList(value));
                     }
                 }
-                lists.put(key, inline);
-                currentList = null;
-            } else {
-                values.put(key, unquote(value));
-                currentList = value.isEmpty() ? key : null;
+                default -> commandList = null;
             }
         }
-        return new PluginDescription(values, lists);
+
+        List<CommandDescription> commands = new ArrayList<>();
+        for (CommandBuilder builder : commandBuilders.values()) {
+            commands.add(builder.build());
+        }
+        return new PluginDescription(values, lists, List.copyOf(commands));
     }
 
     private static String required(Map<String, String> values, String key) {
@@ -156,7 +223,7 @@ public final class PluginDescription {
             return PluginLoadOrder.POSTWORLD;
         }
         try {
-            return PluginLoadOrder.valueOf(value.strip().toUpperCase(java.util.Locale.ROOT).replace('-', '_'));
+            return PluginLoadOrder.valueOf(value.strip().toUpperCase(Locale.ROOT).replace('-', '_'));
         } catch (IllegalArgumentException e) {
             throw new PluginDescriptionException("plugin.yml load must be STARTUP or POSTWORLD, not \""
                     + value + "\"");
@@ -164,7 +231,7 @@ public final class PluginDescription {
     }
 
     private static List<String> list(Map<String, String> values, Map<String, List<String>> lists,
-                                     String key) {
+                                      String key) {
         List<String> fromLists = lists.get(key);
         if (fromLists != null) {
             return List.copyOf(fromLists);
@@ -174,6 +241,17 @@ public final class PluginDescription {
             return List.of();
         }
         return List.of(unquote(value));
+    }
+
+    private static List<String> inlineList(String value) {
+        List<String> result = new ArrayList<>();
+        String body = value.substring(1, value.length() - 1).strip();
+        if (!body.isEmpty()) {
+            for (String item : body.split(",")) {
+                result.add(unquote(item.strip()));
+            }
+        }
+        return result;
     }
 
     /** A # that starts the line or follows whitespace begins a comment, outside quotes. */
@@ -202,5 +280,23 @@ public final class PluginDescription {
             return value.substring(1, value.length() - 1).replace("''", "'");
         }
         return value;
+    }
+
+    /** Collects the fields of one command before validating it into a CommandDescription. */
+    private static final class CommandBuilder {
+
+        private final String name;
+        private String description = "";
+        private String usage = "";
+        private String permission = "";
+        private final List<String> aliases = new ArrayList<>();
+
+        private CommandBuilder(String name) {
+            this.name = name;
+        }
+
+        private CommandDescription build() {
+            return new CommandDescription(name, description, aliases, usage, permission);
+        }
     }
 }

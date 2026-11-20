@@ -1,8 +1,10 @@
 package com.netherrack.api;
 
 import com.netherrack.api.entity.Player;
+import com.netherrack.api.permission.PermissionManager;
 import com.netherrack.api.plugin.PluginLogger;
 import com.netherrack.api.plugin.PluginManager;
+import com.netherrack.api.scheduler.Scheduler;
 import com.netherrack.api.world.World;
 
 import java.util.Collection;
@@ -32,4 +34,10 @@ public interface Server {
 
     /** The players currently registered on the server. */
     Collection<Player> getPlayers();
+
+    /** The plugin task scheduler, whose tasks run on the server tick. */
+    Scheduler getScheduler();
+
+    /** The registry of permission nodes plugins have declared. */
+    PermissionManager getPermissionManager();
 }

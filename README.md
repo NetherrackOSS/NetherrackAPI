@@ -4,9 +4,9 @@
 Plugin API for [Netherrack](https://github.com/NetherrackOSS/Netherrack), an experimental
 Minecraft: Bedrock Edition server written in Java 17.
 
-This repository contains the plugin contracts: lifecycle callbacks, listeners and events, and
-small `Server`, `Player`, `World` and `BlockSnapshot` interfaces. The scheduler, commands and
-permissions are still planned; see `PLUGIN_API_PLAN.md` in the server repository for the design.
+This repository contains the plugin contracts: lifecycle callbacks, listeners and events, small
+`Server`, `Player`, `World` and `BlockSnapshot` interfaces, plus commands, a tick scheduler and a
+permission layer. See `PLUGIN_API_PLAN.md` in the server repository for the design.
 
 ## Using it in a plugin
 
@@ -110,7 +110,59 @@ The first events are:
 
 Events are delivered synchronously on the thread doing the action: startup events on the main
 startup thread, shutdown events on the shutdown thread, and player and block events on that
-player's network thread. A handler should return quickly; schedulers for slower work are planned.
+player's network thread. A handler should return quickly; use the scheduler for delayed work.
+
+## Commands
+
+Declare commands in `plugin.yml` and either override `onCommand` on `PluginBase` or give the command
+its own executor:
+
+```yaml
+commands:
+  hello:
+    description: Says hello
+    aliases: [hi]
+    usage: /hello [name]
+    permission: hello.use
+```
+
+```java
+@Override
+public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+    sender.sendMessage("Hello, " + sender.getName() + "!");
+    return true;
+}
+```
+
+Returning `false` shows the usage line. The server checks `permission` before calling the executor,
+and unregisters the command when the plugin is disabled.
+
+## Scheduler and permissions
+
+`Server.getScheduler()` runs tasks on the server tick (20 ticks per second). Tasks may be one-shot,
+delayed or repeating, and are cancelled with their owning plugin on disable:
+
+```java
+getServer().getScheduler().runTaskTimer(this, () -> {
+    getLogger().info("One more tick passed.");
+}, 20L, 20L);
+```
+
+Permissions sit on top of vanilla's op levels. Register a node with a default, then check it through
+a player or command sender:
+
+```java
+getServer().getPermissionManager().registerPermission(
+        new Permission("hello.use", "Use /hello", PermissionDefault.ALLOW, this));
+
+if (sender.hasPermission("hello.use")) {
+    sender.sendMessage("Allowed.");
+}
+```
+
+A permission manager plugin can call `addAttachment(plugin)` on any `Permissible` to allow or deny
+nodes for one player. The most specific rule wins: an exact node beats a `parent.*` wildcard, and an
+explicit denial beats registered defaults and operator status.
 
 ## Building and testing
 

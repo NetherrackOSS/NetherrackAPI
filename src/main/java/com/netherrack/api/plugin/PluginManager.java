@@ -1,5 +1,6 @@
 package com.netherrack.api.plugin;
 
+import com.netherrack.api.command.PluginCommand;
 import com.netherrack.api.event.Event;
 import com.netherrack.api.event.Listener;
 
@@ -22,6 +23,9 @@ public interface PluginManager {
 
     /** Whether a plugin with this name is loaded and enabled. */
     boolean isPluginEnabled(String name);
+
+    /** A command this plugin declared in plugin.yml, or null if it declared none with that name. */
+    PluginCommand getCommand(String name, Plugin plugin);
 
     /** Registers all @EventHandler methods on a listener. */
     void registerEvents(Listener listener, Plugin plugin);

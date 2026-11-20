@@ -1,6 +1,11 @@
 package com.netherrack.api.plugin;
 
 import com.netherrack.api.Server;
+import com.netherrack.api.command.Command;
+import com.netherrack.api.command.CommandExecutor;
+import com.netherrack.api.command.CommandSender;
+import com.netherrack.api.permission.PermissionManager;
+import com.netherrack.api.scheduler.Scheduler;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -14,7 +19,7 @@ import java.nio.file.Path;
  * class has a plain constructor and can be instantiated reflectively. The three lifecycle
  * methods do nothing by default, so a plugin only overrides the ones it cares about.
  */
-public abstract class PluginBase implements Plugin {
+public abstract class PluginBase implements Plugin, CommandExecutor {
 
     private PluginManager pluginManager;
     private Server server;
@@ -63,6 +68,15 @@ public abstract class PluginBase implements Plugin {
 
     @Override
     public void onDisable() {
+    }
+
+    /**
+     * Handles a command declared by this plugin. Returning false shows its usage line. Plugins that
+     * prefer a separate handler can call {@code getCommand(name).setExecutor(...)} instead.
+     */
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        return false;
     }
 
     @Override
@@ -117,5 +131,20 @@ public abstract class PluginBase implements Plugin {
     @Override
     public ClassLoader getClassLoader() {
         return classLoader;
+    }
+
+    /** A declared command this plugin can configure, or null if it declared none with that name. */
+    public com.netherrack.api.command.PluginCommand getCommand(String name) {
+        return pluginManager == null ? null : pluginManager.getCommand(name, this);
+    }
+
+    /** Convenience for {@code getServer().getScheduler()}. */
+    public Scheduler getScheduler() {
+        return server == null ? null : server.getScheduler();
+    }
+
+    /** Convenience for {@code getServer().getPermissionManager()}. */
+    public PermissionManager getPermissionManager() {
+        return server == null ? null : server.getPermissionManager();
     }
 }

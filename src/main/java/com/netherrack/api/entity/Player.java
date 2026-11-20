@@ -1,5 +1,6 @@
 package com.netherrack.api.entity;
 
+import com.netherrack.api.permission.Permissible;
 import com.netherrack.api.world.World;
 
 import java.util.UUID;
@@ -10,7 +11,7 @@ import java.util.UUID;
  * This is deliberately narrow: enough for the first events to identify who acted and answer
  * them. More of the player will be added as events need it.
  */
-public interface Player {
+public interface Player extends Permissible {
 
     String getName();
 
