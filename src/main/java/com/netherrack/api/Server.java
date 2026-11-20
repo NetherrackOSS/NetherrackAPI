@@ -1,14 +1,17 @@
 package com.netherrack.api;
 
+import com.netherrack.api.entity.Player;
 import com.netherrack.api.plugin.PluginLogger;
 import com.netherrack.api.plugin.PluginManager;
+import com.netherrack.api.world.World;
+
+import java.util.Collection;
 
 /**
  * The server a plugin runs on, as seen through the API.
  * <p>
- * This is deliberately small. It gives a plugin its bearings and access to the plugin manager
- * without exposing the server's internal classes; world, player and scheduler access will be
- * added here as those parts of the API are built.
+ * This stays small on purpose. It gives a plugin its bearings, the plugin manager and the two
+ * shared objects events refer to, without exposing the server's internal classes.
  */
 public interface Server {
 
@@ -23,4 +26,10 @@ public interface Server {
 
     /** A logger that prefixes lines with the server's own name. */
     PluginLogger getLogger();
+
+    /** The loaded world, or null before it has been opened. */
+    World getWorld();
+
+    /** The players currently registered on the server. */
+    Collection<Player> getPlayers();
 }

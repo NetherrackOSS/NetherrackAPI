@@ -1,5 +1,17 @@
 import com.netherrack.api.ApiVersion;
 import com.netherrack.api.Server;
+import com.netherrack.api.entity.Player;
+import com.netherrack.api.event.Event;
+import com.netherrack.api.event.EventException;
+import com.netherrack.api.event.EventHandler;
+import com.netherrack.api.event.EventManager;
+import com.netherrack.api.event.EventPriority;
+import com.netherrack.api.event.Listener;
+import com.netherrack.api.event.block.BlockPlaceEvent;
+import com.netherrack.api.event.player.PlayerChatEvent;
+import com.netherrack.api.event.player.PlayerEvent;
+import com.netherrack.api.event.player.PlayerJoinEvent;
+import com.netherrack.api.event.player.PlayerQuitEvent;
 import com.netherrack.api.plugin.Plugin;
 import com.netherrack.api.plugin.PluginBase;
 import com.netherrack.api.plugin.PluginConfig;
@@ -8,6 +20,9 @@ import com.netherrack.api.plugin.PluginDescriptionException;
 import com.netherrack.api.plugin.PluginLoadOrder;
 import com.netherrack.api.plugin.PluginLogger;
 import com.netherrack.api.plugin.PluginManager;
+import com.netherrack.api.world.BlockPosition;
+import com.netherrack.api.world.BlockSnapshot;
+import com.netherrack.api.world.World;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,8 +30,9 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 
-/** Plain-Java checks for the lifecycle layer. Run with tests/run.sh. */
+/** Plain-Java checks for the lifecycle and event layers. Run with tests/run.sh. */
 public final class PluginApiTest {
 
     private static int failures;
@@ -26,6 +42,7 @@ public final class PluginApiTest {
         descriptionParsing();
         lifecycle();
         configRoundTrip();
+        events();
 
         System.out.println(failures == 0 ? "All plugin API checks passed." : failures + " check(s) failed.");
         System.exit(failures == 0 ? 0 : 1);
@@ -138,6 +155,56 @@ public final class PluginApiTest {
         check("top level key", nested.get("plain", "?"), "7");
     }
 
+    private static void events() {
+        List<String> errors = new ArrayList<>();
+        EventManager manager = new EventManager(error -> errors.add(describe(error)));
+        StubPlayer player = new StubPlayer();
+        StubPlugin plugin = new StubPlugin();
+
+        PriorityListener priority = new PriorityListener();
+        manager.registerEvents(priority, plugin);
+        manager.callEvent(new PlayerJoinEvent(player));
+        check("priority and base class order", priority.calls,
+                List.of("lowest", "high", "monitor"));
+
+        CancellationListener cancellation = new CancellationListener();
+        manager.registerEvents(cancellation, plugin);
+        PlayerChatEvent chat = new PlayerChatEvent(player, "original");
+        manager.callEvent(chat);
+        check("cancellation order", cancellation.calls,
+                List.of("canceller", "monitor:changed:true"));
+        check("cancelled event stays cancelled", chat.isCancelled(), true);
+        check("chat message changed", chat.getMessage(), "changed");
+
+        FailingListener failing = new FailingListener();
+        manager.registerEvents(failing, plugin);
+        manager.callEvent(new PlayerQuitEvent(player));
+        check("later handler survives failure", failing.calls, List.of("after failure"));
+        check("handler failure reported", errors.size(), 1);
+        check("handler failure keeps cause", errors.get(0).contains("boom"), true);
+
+        StubManager visibleManager = new StubManager();
+        JoinListener join = new JoinListener();
+        visibleManager.registerEvents(join, plugin);
+        visibleManager.callEvent(new PlayerJoinEvent(player));
+        check("plugin manager dispatches", join.calls, List.of(1));
+        visibleManager.unregisterEvents(plugin);
+        visibleManager.callEvent(new PlayerJoinEvent(player));
+        check("plugin unregister removes handlers", join.calls, List.of(1));
+
+        BlockSnapshot stone = new BlockSnapshot("minecraft:stone", 12345);
+        BlockPlaceEvent place = new BlockPlaceEvent(player, new BlockPosition(1, 64, -3), stone);
+        place.setCancelled(true);
+        check("event name", place.getEventName(), "BlockPlaceEvent");
+        check("event block position", place.getPosition().toString(), "(1, 64, -3)");
+        check("event block snapshot", place.getBlock(), stone);
+        check("block place cancellation", place.isCancelled(), true);
+
+        StubManager invalid = new StubManager();
+        check("invalid handler rejected", throwsEventException(() ->
+                invalid.registerEvents(new InvalidListener(), plugin)), true);
+    }
+
     private static boolean throwsDescription(String yaml) {
         try {
             PluginDescription.parse(yaml);
@@ -145,6 +212,20 @@ public final class PluginApiTest {
         } catch (PluginDescriptionException e) {
             return true;
         }
+    }
+
+    private static boolean throwsEventException(Runnable action) {
+        try {
+            action.run();
+            return false;
+        } catch (EventException e) {
+            return true;
+        }
+    }
+
+    private static String describe(Throwable error) {
+        Throwable cause = error.getCause();
+        return (cause == null ? error : cause).toString();
     }
 
     private static void check(String name, Object actual, Object expected) {
@@ -175,6 +256,78 @@ public final class PluginApiTest {
         }
     }
 
+    private static final class StubPlugin extends PluginBase {
+    }
+
+    private static final class PriorityListener implements Listener {
+        final List<String> calls = new ArrayList<>();
+
+        @EventHandler(priority = EventPriority.HIGH)
+        public void high(PlayerJoinEvent event) {
+            calls.add("high");
+        }
+
+        @EventHandler(priority = EventPriority.LOWEST)
+        public void lowest(PlayerJoinEvent event) {
+            calls.add("lowest");
+        }
+
+        @EventHandler(priority = EventPriority.MONITOR)
+        public void monitor(PlayerEvent event) {
+            calls.add("monitor");
+        }
+    }
+
+    private static final class CancellationListener implements Listener {
+        final List<String> calls = new ArrayList<>();
+
+        @EventHandler(priority = EventPriority.LOWEST)
+        public void cancel(PlayerChatEvent event) {
+            calls.add("canceller");
+            event.setMessage("changed");
+            event.setCancelled(true);
+        }
+
+        @EventHandler
+        public void ignored(PlayerChatEvent event) {
+            calls.add("ignored");
+        }
+
+        @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+        public void monitor(PlayerChatEvent event) {
+            calls.add("monitor:" + event.getMessage() + ":" + event.isCancelled());
+        }
+    }
+
+    private static final class FailingListener implements Listener {
+        final List<String> calls = new ArrayList<>();
+
+        @EventHandler(priority = EventPriority.LOWEST)
+        public void fail(PlayerQuitEvent event) {
+            throw new IllegalStateException("boom");
+        }
+
+        @EventHandler(priority = EventPriority.HIGHEST)
+        public void after(PlayerQuitEvent event) {
+            calls.add("after failure");
+        }
+    }
+
+    private static final class JoinListener implements Listener {
+        final List<Integer> calls = new ArrayList<>();
+
+        @EventHandler
+        public void join(PlayerJoinEvent event) {
+            calls.add(1);
+        }
+    }
+
+    private static final class InvalidListener implements Listener {
+        @EventHandler
+        public void wrongParameters(String notAnEvent) {
+        }
+    }
+
     private static final class RecordingLogger implements PluginLogger {
         final List<String> lines = new ArrayList<>();
 
@@ -196,6 +349,36 @@ public final class PluginApiTest {
         @Override
         public void debug(String message) {
             lines.add(message);
+        }
+    }
+
+    private static final class StubPlayer implements Player {
+        @Override
+        public String getName() {
+            return "Tester";
+        }
+
+        @Override
+        public UUID getUuid() {
+            return UUID.nameUUIDFromBytes("Tester".getBytes());
+        }
+
+        @Override
+        public String getXuid() {
+            return "";
+        }
+
+        @Override
+        public World getWorld() {
+            return null;
+        }
+
+        @Override
+        public void sendMessage(String message) {
+        }
+
+        @Override
+        public void kick(String reason) {
         }
     }
 
@@ -225,9 +408,21 @@ public final class PluginApiTest {
         public PluginLogger getLogger() {
             return logger;
         }
+
+        @Override
+        public World getWorld() {
+            return null;
+        }
+
+        @Override
+        public Collection<Player> getPlayers() {
+            return List.of();
+        }
     }
 
     private static final class StubManager implements PluginManager {
+        private final EventManager events = new EventManager();
+
         @Override
         public Plugin getPlugin(String name) {
             return null;
@@ -241,6 +436,26 @@ public final class PluginApiTest {
         @Override
         public boolean isPluginEnabled(String name) {
             return false;
+        }
+
+        @Override
+        public void registerEvents(Listener listener, Plugin plugin) {
+            events.registerEvents(listener, plugin);
+        }
+
+        @Override
+        public void unregisterEvents(Listener listener) {
+            events.unregisterEvents(listener);
+        }
+
+        @Override
+        public void unregisterEvents(Plugin plugin) {
+            events.unregisterEvents(plugin);
+        }
+
+        @Override
+        public void callEvent(Event event) {
+            events.callEvent(event);
         }
     }
 }
