@@ -14,8 +14,12 @@ import com.netherrack.api.event.Listener;
 import com.netherrack.api.event.block.BlockPlaceEvent;
 import com.netherrack.api.event.player.PlayerChatEvent;
 import com.netherrack.api.event.player.PlayerEvent;
+import com.netherrack.api.event.player.PlayerFormRespondedEvent;
 import com.netherrack.api.event.player.PlayerJoinEvent;
 import com.netherrack.api.event.player.PlayerQuitEvent;
+import com.netherrack.api.form.Form;
+import com.netherrack.api.form.SimpleForm;
+import com.netherrack.api.form.SimpleFormResponse;
 import com.netherrack.api.permission.Permission;
 import com.netherrack.api.permission.PermissionAttachment;
 import com.netherrack.api.permission.PermissionDefault;
@@ -61,6 +65,7 @@ public final class PluginApiTest {
         lifecycle();
         configRoundTrip();
         events();
+        forms();
 
         System.out.println(failures == 0 ? "All plugin API checks passed." : failures + " check(s) failed.");
         System.exit(failures == 0 ? 0 : 1);
@@ -236,6 +241,41 @@ public final class PluginApiTest {
         StubManager invalid = new StubManager();
         check("invalid handler rejected", throwsEventException(() ->
                 invalid.registerEvents(new InvalidListener(), plugin)), true);
+
+        PlayerFormRespondedEvent formEvent =
+                new PlayerFormRespondedEvent(player, null, 7, "0", false);
+        check("form event name", formEvent.getEventName(), "PlayerFormRespondedEvent");
+        check("form event id", formEvent.getFormId(), 7);
+        check("form event response", formEvent.getResponse(), "0");
+        check("form event closed", formEvent.wasClosed(), false);
+    }
+
+    private static void forms() {
+        StubPlayer player = new StubPlayer();
+        List<String> calls = new ArrayList<>();
+        SimpleForm form = new SimpleForm("Test \"quoted\"", "Line\nTwo")
+                .addButton("Test")
+                .addButton("Other")
+                .onSubmit((submitter, response) -> calls.add("submit:" + response.getButtonId()
+                        + ":" + response.getButtonText() + ":" + (submitter == player)))
+                .onClose(closer -> calls.add("close:" + (closer == player)));
+
+        String json = form.toJson();
+        check("form json type", json.contains("\"type\":\"form\""), true);
+        check("form json title", json.contains("\"title\":\"Test \\\"quoted\\\"\""), true);
+        check("form json content", json.contains("\"content\":\"Line\\nTwo\""), true);
+        check("form json buttons", json.contains("\"text\":\"Test\"")
+                && json.contains("\"text\":\"Other\""), true);
+
+        form.handleResponse(player, "1", false);
+        form.handleResponse(player, "null", false);
+        form.handleResponse(player, "bad", false);
+        check("form callbacks", calls,
+                List.of("submit:1:Other:true", "close:true", "close:true"));
+
+        check("player show form", player.showForm(form), 7);
+        check("player shown form", player.shownForm(), form);
+        check("second form refused", player.showForm(new SimpleForm("Other", "Other")), -1);
     }
 
     private static void permissions() {
@@ -510,6 +550,8 @@ public final class PluginApiTest {
     private static final class StubPlayer extends TestPermissible implements Player {
         private Location location = new Location(0, 64, 0);
         private GameMode gameMode = GameMode.SURVIVAL;
+        private Form shownForm;
+        private boolean formOpen;
 
         @Override
         public String getName() {
@@ -553,6 +595,20 @@ public final class PluginApiTest {
 
         @Override
         public void sendMessage(String message) {
+        }
+
+        @Override
+        public int showForm(Form form) {
+            if (formOpen) {
+                return -1;
+            }
+            formOpen = true;
+            shownForm = form;
+            return 7;
+        }
+
+        Form shownForm() {
+            return shownForm;
         }
 
         @Override

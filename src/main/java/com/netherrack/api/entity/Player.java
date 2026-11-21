@@ -1,5 +1,6 @@
 package com.netherrack.api.entity;
 
+import com.netherrack.api.form.Form;
 import com.netherrack.api.permission.Permissible;
 import com.netherrack.api.world.Location;
 import com.netherrack.api.world.World;
@@ -37,6 +38,12 @@ public interface Player extends Permissible {
     void setGameMode(GameMode gameMode);
 
     void sendMessage(String message);
+
+    /**
+     * Shows a Bedrock form and returns its id, or -1 if this player already has a form open.
+     * Callbacks registered on the form run on the player's network thread when the client answers.
+     */
+    int showForm(Form form);
 
     void kick(String reason);
 }

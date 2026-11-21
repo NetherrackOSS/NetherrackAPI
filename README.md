@@ -108,6 +108,7 @@ The first events are:
 - `PlayerLoginEvent`, `PlayerJoinEvent`, `PlayerQuitEvent`, `PlayerChatEvent`,
   `PlayerCommandEvent`
 - `BlockPlaceEvent`, `BlockBreakEvent`
+- `PlayerFormRespondedEvent`
 
 Events are delivered synchronously on the thread doing the action: startup events on the main
 startup thread, shutdown events on the shutdown thread, and player and block events on that
@@ -155,6 +156,28 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
 
 Returning `false` shows the usage line. The server checks `permission` before calling the executor,
 and unregisters the command when the plugin is disabled.
+
+## Forms
+
+`Player.showForm(Form)` opens a Bedrock form and returns its id, or `-1` if the player already has
+one open. `SimpleForm` is a title, a message and a list of buttons; its callbacks receive the player
+and the button they chose. Closing the form runs `onClose` instead.
+
+```java
+import com.netherrack.api.form.SimpleForm;
+import com.netherrack.api.form.SimpleFormResponse;
+
+SimpleForm form = new SimpleForm("Test", "Test")
+        .addButton("Test")
+        .onSubmit((player, response) ->
+                player.sendMessage("You clicked " + response.getButtonText()))
+        .onClose(player -> player.sendMessage("You closed the form."));
+player.showForm(form);
+```
+
+The server sends the form's JSON, matches the client's response back to the id, and clears the
+player's open form. A `PlayerFormRespondedEvent` also fires for listeners that want to observe every
+response. Callbacks run on the player's network thread, so keep them short.
 
 ## Scheduler and permissions
 
