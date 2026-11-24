@@ -12,11 +12,14 @@ import com.netherrack.api.event.EventManager;
 import com.netherrack.api.event.EventPriority;
 import com.netherrack.api.event.Listener;
 import com.netherrack.api.event.block.BlockPlaceEvent;
+import com.netherrack.api.event.player.PlayerActionBarEvent;
 import com.netherrack.api.event.player.PlayerChatEvent;
 import com.netherrack.api.event.player.PlayerEvent;
 import com.netherrack.api.event.player.PlayerFormRespondedEvent;
 import com.netherrack.api.event.player.PlayerJoinEvent;
+import com.netherrack.api.event.player.PlayerPopupEvent;
 import com.netherrack.api.event.player.PlayerQuitEvent;
+import com.netherrack.api.event.player.PlayerToastEvent;
 import com.netherrack.api.form.Form;
 import com.netherrack.api.form.SimpleForm;
 import com.netherrack.api.form.SimpleFormResponse;
@@ -72,11 +75,11 @@ public final class PluginApiTest {
     }
 
     private static void versions() {
-        check("current version", ApiVersion.CURRENT, "0.4.0");
-        check("same version compatible", ApiVersion.isCompatible("0.4.0"), true);
-        check("newer patch compatible", ApiVersion.isCompatible("0.4.7"), true);
-        check("snapshot compatible", ApiVersion.isCompatible("0.4.0-SNAPSHOT"), true);
-        check("older minor incompatible", ApiVersion.isCompatible("0.3.9"), false);
+        check("current version", ApiVersion.CURRENT, "0.5.0");
+        check("same version compatible", ApiVersion.isCompatible("0.5.0"), true);
+        check("newer patch compatible", ApiVersion.isCompatible("0.5.7"), true);
+        check("snapshot compatible", ApiVersion.isCompatible("0.5.0-SNAPSHOT"), true);
+        check("older minor incompatible", ApiVersion.isCompatible("0.4.9"), false);
         check("major incompatible", ApiVersion.isCompatible("1.0.0"), false);
         check("missing version incompatible", ApiVersion.isCompatible(null), false);
         check("garbage incompatible", ApiVersion.isCompatible("banana"), false);
@@ -87,7 +90,7 @@ public final class PluginApiTest {
                 # A test plugin
                 name: ExamplePlugin
                 version: 1.2.3
-                api-version: 0.4.0
+                api-version: 0.5.0
                 main: com.example.ExamplePlugin
                 description: "An example plugin"
                 author: 'Someone'
@@ -106,7 +109,7 @@ public final class PluginApiTest {
                 """);
         check("name", description.getName(), "ExamplePlugin");
         check("version", description.getVersion(), "1.2.3");
-        check("api version", description.getApiVersion(), "0.4.0");
+        check("api version", description.getApiVersion(), "0.5.0");
         check("main class", description.getMain(), "com.example.ExamplePlugin");
         check("description", description.getDescription(), "An example plugin");
         check("author", description.getAuthor(), "Someone");
@@ -138,7 +141,7 @@ public final class PluginApiTest {
         PluginDescription description = PluginDescription.parse("""
                 name: LifecyclePlugin
                 version: 1.0.0
-                api-version: 0.4.0
+                api-version: 0.5.0
                 main: LifecyclePlugin
                 """);
         RecordingLogger logger = new RecordingLogger();
@@ -237,6 +240,35 @@ public final class PluginApiTest {
         check("event block position", place.getPosition().toString(), "(1, 64, -3)");
         check("event block snapshot", place.getBlock(), stone);
         check("block place cancellation", place.isCancelled(), true);
+
+        PlayerActionBarEvent actionBar = new PlayerActionBarEvent(player, "bar", 1, 0, 1);
+        actionBar.setMessage("changed bar");
+        actionBar.setFadeInTime(2);
+        actionBar.setStayTime(20);
+        actionBar.setFadeOutTime(3);
+        check("action bar event name", actionBar.getEventName(), "PlayerActionBarEvent");
+        check("action bar message changed", actionBar.getMessage(), "changed bar");
+        check("action bar times changed",
+                List.of(actionBar.getFadeInTime(), actionBar.getStayTime(),
+                        actionBar.getFadeOutTime()), List.of(2, 20, 3));
+        check("action bar starts uncancelled", actionBar.isCancelled(), false);
+        actionBar.setCancelled(true);
+        check("action bar cancellation", actionBar.isCancelled(), true);
+
+        PlayerToastEvent toast = new PlayerToastEvent(player, "title", "content");
+        toast.setTitle("changed title");
+        toast.setContent("changed content");
+        check("toast event name", toast.getEventName(), "PlayerToastEvent");
+        check("toast title changed", toast.getTitle(), "changed title");
+        check("toast content changed", toast.getContent(), "changed content");
+        check("toast cancellation", toast.isCancelled(), false);
+
+        PlayerPopupEvent popup = new PlayerPopupEvent(player, "popup");
+        popup.setMessage("changed popup");
+        check("popup event name", popup.getEventName(), "PlayerPopupEvent");
+        check("popup message changed", popup.getMessage(), "changed popup");
+        popup.setCancelled(true);
+        check("popup cancellation", popup.isCancelled(), true);
 
         StubManager invalid = new StubManager();
         check("invalid handler rejected", throwsEventException(() ->
@@ -598,6 +630,22 @@ public final class PluginApiTest {
         }
 
         @Override
+        public void sendActionBar(String message) {
+        }
+
+        @Override
+        public void sendActionBar(String message, int fadeInTime, int stayTime, int fadeOutTime) {
+        }
+
+        @Override
+        public void sendToast(String title, String content) {
+        }
+
+        @Override
+        public void sendPopup(String message) {
+        }
+
+        @Override
         public int showForm(Form form) {
             if (formOpen) {
                 return -1;
@@ -630,7 +678,7 @@ public final class PluginApiTest {
 
         @Override
         public String getVersion() {
-            return "0.4.0-beta";
+            return "0.5.0-beta";
         }
 
         @Override

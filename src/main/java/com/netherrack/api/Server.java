@@ -20,7 +20,7 @@ public interface Server {
     /** The server's name, "Netherrack". */
     String getName();
 
-    /** The server's version, such as "0.4.0-beta". */
+    /** The server's version, such as "0.5.0-beta". */
     String getVersion();
 
     /** The manager that loaded this plugin. */

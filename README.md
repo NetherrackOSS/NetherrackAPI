@@ -5,9 +5,9 @@ Plugin API for [Netherrack](https://github.com/NetherrackOSS/Netherrack), an exp
 Minecraft: Bedrock Edition server written in Java 17.
 
 This repository contains the plugin contracts: lifecycle callbacks, listeners and events, small
-`Server`, `Player`, `World` and `BlockSnapshot` interfaces, player locations and game modes, plus
-commands, a tick scheduler and a permission layer. See `PLUGIN_API_PLAN.md` in the server repository
-for the design.
+`Server`, `Player`, `World` and `BlockSnapshot` interfaces, player locations and game modes, chat
+and HUD messages, plus commands, a tick scheduler and a permission layer. See `PLUGIN_API_PLAN.md`
+in the server repository for the design.
 
 ## Using it in a plugin
 
@@ -25,7 +25,7 @@ JitPack builds the artifact directly from a git tag:
     <dependency>
         <groupId>com.github.NetherrackOSS</groupId>
         <artifactId>NetherrackAPI</artifactId>
-        <version>v0.4.0-SNAPSHOT</version>
+        <version>v0.5.0-SNAPSHOT</version>
         <scope>provided</scope>
     </dependency>
 </dependencies>
@@ -41,7 +41,7 @@ copy.
 ```yaml
 name: HelloPlugin
 version: 1.0.0
-api-version: 0.4.0
+api-version: 0.5.0
 main: com.example.hello.HelloPlugin
 description: Says hello when enabled
 author: You
@@ -107,6 +107,7 @@ The first events are:
 - `ServerStartEvent`, `ServerStopEvent`
 - `PlayerLoginEvent`, `PlayerJoinEvent`, `PlayerQuitEvent`, `PlayerChatEvent`,
   `PlayerCommandEvent`
+- `PlayerActionBarEvent`, `PlayerToastEvent`, `PlayerPopupEvent`
 - `BlockPlaceEvent`, `BlockBreakEvent`
 - `PlayerFormRespondedEvent`
 
@@ -124,6 +125,17 @@ them, so a plugin never has to send movement packets itself.
 Location here = player.getLocation();
 player.teleport(new Location(here.getX(), here.getY() + 10, here.getZ(), here.getYaw(), here.getPitch()));
 player.setGameMode(GameMode.CREATIVE);
+```
+
+`sendActionBar`, `sendToast` and `sendPopup` use the same packet shapes as Cloudburst Nukkit's
+player methods. Each one fires its matching cancellable event first, so listeners may rewrite the
+message or stop it being sent. The action bar overload without times uses Nukkit's defaults of one
+tick in, no stay and one tick out.
+
+```java
+player.sendActionBar("Mining 12%");
+player.sendToast("Quest complete", "Return to the village");
+player.sendPopup("Press jump to continue");
 ```
 
 `World.getBlock(x, y, z)` and `setBlock(x, y, z, snapshot)` use block coordinates and return

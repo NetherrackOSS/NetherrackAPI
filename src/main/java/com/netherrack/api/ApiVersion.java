@@ -3,14 +3,14 @@ package com.netherrack.api;
 /**
  * The API version a plugin declares in plugin.yml, and the version this jar implements.
  * <p>
- * Only the major and minor numbers matter while the API is in beta: a plugin built for 0.4.x
- * can run on any 0.4.x server, but not on 0.3.x or 1.x. The server checks this before loading a
+ * Only the major and minor numbers matter while the API is in beta: a plugin built for 0.5.x
+ * can run on any 0.5.x server, but not on 0.4.x or 1.x. The server checks this before loading a
  * plugin, so a mismatch is reported as a load failure rather than a class-loading error later.
  */
 public final class ApiVersion {
 
     /** The version of the API in this jar, matching the version declared in plugin.yml. */
-    public static final String CURRENT = "0.4.0";
+    public static final String CURRENT = "0.5.0";
 
     private ApiVersion() {
     }

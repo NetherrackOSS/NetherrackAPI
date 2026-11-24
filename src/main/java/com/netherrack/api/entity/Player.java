@@ -40,6 +40,21 @@ public interface Player extends Permissible {
     void sendMessage(String message);
 
     /**
+     * Shows a message in the player's action bar. Fires a cancellable PlayerActionBarEvent with
+     * Nukkit's default animation times of one tick in, no stay and one tick out.
+     */
+    void sendActionBar(String message);
+
+    /** Shows an action bar message with explicit fade-in, stay and fade-out times in ticks. */
+    void sendActionBar(String message, int fadeInTime, int stayTime, int fadeOutTime);
+
+    /** Shows a toast notification. Fires a cancellable PlayerToastEvent before sending it. */
+    void sendToast(String title, String content);
+
+    /** Shows a popup message. Fires a cancellable PlayerPopupEvent before sending it. */
+    void sendPopup(String message);
+
+    /**
      * Shows a Bedrock form and returns its id, or -1 if this player already has a form open.
      * Callbacks registered on the form run on the player's network thread when the client answers.
      */
