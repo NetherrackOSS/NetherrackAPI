@@ -25,7 +25,7 @@ JitPack builds the artifact directly from a git tag:
     <dependency>
         <groupId>com.github.NetherrackOSS</groupId>
         <artifactId>NetherrackAPI</artifactId>
-        <version>v0.5.0-SNAPSHOT</version>
+        <version>v0.5.1-SNAPSHOT</version>
         <scope>provided</scope>
     </dependency>
 </dependencies>
@@ -41,7 +41,7 @@ copy.
 ```yaml
 name: HelloPlugin
 version: 1.0.0
-api-version: 0.5.0
+api-version: 0.5.1
 main: com.example.hello.HelloPlugin
 description: Says hello when enabled
 author: You
@@ -173,14 +173,18 @@ and unregisters the command when the plugin is disabled.
 
 `Player.showForm(Form)` opens a Bedrock form and returns its id, or `-1` if the player already has
 one open. `SimpleForm` is a title, a message and a list of buttons; its callbacks receive the player
-and the button they chose. Closing the form runs `onClose` instead.
+and the button they chose. Closing the form runs `onClose` instead. Buttons may carry an icon from
+the client's resource pack with `FormButtonImage.path(...)`, or a downloaded image with
+`FormButtonImage.url(...)`, matching Cloudburst Nukkit's `ElementButtonImageData`.
 
 ```java
+import com.netherrack.api.form.FormButtonImage;
 import com.netherrack.api.form.SimpleForm;
-import com.netherrack.api.form.SimpleFormResponse;
 
-SimpleForm form = new SimpleForm("Test", "Test")
-        .addButton("Test")
+SimpleForm form = new SimpleForm("Test", "Pick one")
+        .addButton("Apple", FormButtonImage.path("textures/items/apple"))
+        .addButton("Website", FormButtonImage.url("https://example.com/button.png"))
+        .addButton("Plain")
         .onSubmit((player, response) ->
                 player.sendMessage("You clicked " + response.getButtonText()))
         .onClose(player -> player.sendMessage("You closed the form."));

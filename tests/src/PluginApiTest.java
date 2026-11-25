@@ -21,6 +21,7 @@ import com.netherrack.api.event.player.PlayerPopupEvent;
 import com.netherrack.api.event.player.PlayerQuitEvent;
 import com.netherrack.api.event.player.PlayerToastEvent;
 import com.netherrack.api.form.Form;
+import com.netherrack.api.form.FormButtonImage;
 import com.netherrack.api.form.SimpleForm;
 import com.netherrack.api.form.SimpleFormResponse;
 import com.netherrack.api.permission.Permission;
@@ -75,8 +76,9 @@ public final class PluginApiTest {
     }
 
     private static void versions() {
-        check("current version", ApiVersion.CURRENT, "0.5.0");
-        check("same version compatible", ApiVersion.isCompatible("0.5.0"), true);
+        check("current version", ApiVersion.CURRENT, "0.5.1");
+        check("older patch compatible", ApiVersion.isCompatible("0.5.0"), true);
+        check("current version compatible", ApiVersion.isCompatible("0.5.1"), true);
         check("newer patch compatible", ApiVersion.isCompatible("0.5.7"), true);
         check("snapshot compatible", ApiVersion.isCompatible("0.5.0-SNAPSHOT"), true);
         check("older minor incompatible", ApiVersion.isCompatible("0.4.9"), false);
@@ -298,6 +300,29 @@ public final class PluginApiTest {
         check("form json content", json.contains("\"content\":\"Line\\nTwo\""), true);
         check("form json buttons", json.contains("\"text\":\"Test\"")
                 && json.contains("\"text\":\"Other\""), true);
+
+        SimpleForm icons = new SimpleForm("Icons", "Pick one")
+                .addButton("Apple", FormButtonImage.path("textures/items/apple"))
+                .addButton("Website", FormButtonImage.url("https://example.com/button.png"))
+                .addButton("Plain")
+                .addButton("Empty", FormButtonImage.path(""));
+        String iconJson = icons.toJson();
+        check("path button image", iconJson.contains(
+                "\"image\":{\"type\":\"path\",\"data\":\"textures/items/apple\"}"), true);
+        check("url button image", iconJson.contains(
+                "\"image\":{\"type\":\"url\",\"data\":\"https://example.com/button.png\"}"), true);
+        check("plain button has no image", iconJson.contains(
+                "{\"type\":\"button\",\"text\":\"Plain\"}"), true);
+        check("empty button image ignored", iconJson.contains(
+                "{\"type\":\"button\",\"text\":\"Empty\"}"), true);
+        check("button labels", icons.getButtons(),
+                List.of("Apple", "Website", "Plain", "Empty"));
+        check("button image lookup", icons.getButtonImage(1).getData(),
+                "https://example.com/button.png");
+        check("missing button image", icons.getButtonImage(2), null);
+        check("empty image lookup", icons.getButtonImage(3), null);
+        check("image constructor", new FormButtonImage(FormButtonImage.TYPE_PATH, "icon").getType(),
+                FormButtonImage.TYPE_PATH);
 
         form.handleResponse(player, "1", false);
         form.handleResponse(player, "null", false);

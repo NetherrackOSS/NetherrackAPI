@@ -13,14 +13,18 @@ import java.util.function.Consumer;
  * <p>
  * This is the form type the client shows for a single question or menu, and the one used by the
  * example plugin's test command. The JSON layout follows Cloudburst Nukkit's
- * {@code FormWindowSimple}: each button is an object with its own {@code type} and {@code text}, so
- * button labels can contain anything without changing the surrounding structure.
+ * {@code FormWindowSimple}: each button is an object with its own {@code type}, {@code text} and
+ * optional {@code image}, so labels can contain anything without changing the surrounding
+ * structure.
  */
 public final class SimpleForm extends Form {
 
     private final String content;
-    private final List<String> buttons = new ArrayList<>();
+    private final List<Button> buttons = new ArrayList<>();
     private BiConsumer<Player, SimpleFormResponse> submitHandler;
+
+    private record Button(String text, FormButtonImage image) {
+    }
 
     public SimpleForm(String title, String content) {
         super("form", title);
@@ -29,12 +33,31 @@ public final class SimpleForm extends Form {
 
     /** Adds a button; its position is the id delivered in {@link SimpleFormResponse}. */
     public SimpleForm addButton(String text) {
-        buttons.add(text == null ? "" : text);
+        return addButton(text, null);
+    }
+
+    /**
+     * Adds a button with an optional icon, using the same id ordering as
+     * {@link #addButton(String)}. An icon whose data is empty is ignored, as in Nukkit's
+     * {@code ElementButton}.
+     */
+    public SimpleForm addButton(String text, FormButtonImage image) {
+        buttons.add(new Button(text == null ? "" : text,
+                image == null || image.isEmpty() ? null : image));
         return this;
     }
 
+    /** The button labels, in the order their ids are assigned. */
     public List<String> getButtons() {
-        return List.copyOf(buttons);
+        return buttons.stream().map(Button::text).toList();
+    }
+
+    /** The icon on the button with this id, or null for a text-only button or an unknown id. */
+    public FormButtonImage getButtonImage(int id) {
+        if (id < 0 || id >= buttons.size()) {
+            return null;
+        }
+        return buttons.get(id).image();
     }
 
     public SimpleForm onSubmit(BiConsumer<Player, SimpleFormResponse> submitHandler) {
@@ -58,7 +81,14 @@ public final class SimpleForm extends Form {
             if (i > 0) {
                 out.append(',');
             }
-            out.append("{\"type\":\"button\",\"text\":").append(quote(buttons.get(i))).append('}');
+            Button button = buttons.get(i);
+            out.append("{\"type\":\"button\",\"text\":").append(quote(button.text()));
+            FormButtonImage image = button.image();
+            if (image != null) {
+                out.append(",\"image\":{\"type\":").append(quote(image.getType()))
+                        .append(",\"data\":").append(quote(image.getData())).append('}');
+            }
+            out.append('}');
         }
         return out.append("]}").toString();
     }
@@ -78,6 +108,7 @@ public final class SimpleForm extends Form {
         if (buttonId < 0 || buttonId >= buttons.size() || submitHandler == null) {
             return;
         }
-        submitHandler.accept(player, new SimpleFormResponse(buttonId, buttons.get(buttonId)));
+        submitHandler.accept(player,
+                new SimpleFormResponse(buttonId, buttons.get(buttonId).text()));
     }
 }

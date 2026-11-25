@@ -10,7 +10,7 @@ package com.netherrack.api;
 public final class ApiVersion {
 
     /** The version of the API in this jar, matching the version declared in plugin.yml. */
-    public static final String CURRENT = "0.5.0";
+    public static final String CURRENT = "0.5.1";
 
     private ApiVersion() {
     }
