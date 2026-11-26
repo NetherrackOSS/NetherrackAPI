@@ -3,8 +3,11 @@ import com.netherrack.api.Server;
 import com.netherrack.api.command.Command;
 import com.netherrack.api.command.CommandSender;
 import com.netherrack.api.command.PluginCommand;
+import com.netherrack.api.entity.DamageCause;
 import com.netherrack.api.entity.GameMode;
+import com.netherrack.api.entity.OfflinePlayer;
 import com.netherrack.api.entity.Player;
+import com.netherrack.api.entity.TeleportCause;
 import com.netherrack.api.event.Event;
 import com.netherrack.api.event.EventException;
 import com.netherrack.api.event.EventHandler;
@@ -14,16 +17,30 @@ import com.netherrack.api.event.Listener;
 import com.netherrack.api.event.block.BlockPlaceEvent;
 import com.netherrack.api.event.player.PlayerActionBarEvent;
 import com.netherrack.api.event.player.PlayerChatEvent;
+import com.netherrack.api.event.player.PlayerDamageEvent;
+import com.netherrack.api.event.player.PlayerDeathEvent;
 import com.netherrack.api.event.player.PlayerEvent;
 import com.netherrack.api.event.player.PlayerFormRespondedEvent;
+import com.netherrack.api.event.player.PlayerGameModeChangeEvent;
+import com.netherrack.api.event.player.PlayerInventoryClickEvent;
+import com.netherrack.api.event.player.PlayerItemConsumeEvent;
+import com.netherrack.api.event.player.PlayerItemDropEvent;
+import com.netherrack.api.event.player.PlayerItemPickupEvent;
+import com.netherrack.api.event.player.PlayerItemUseEvent;
 import com.netherrack.api.event.player.PlayerJoinEvent;
+import com.netherrack.api.event.player.PlayerMetadataChangeEvent;
+import com.netherrack.api.event.player.PlayerMoveEvent;
 import com.netherrack.api.event.player.PlayerPopupEvent;
 import com.netherrack.api.event.player.PlayerQuitEvent;
+import com.netherrack.api.event.player.PlayerRespawnEvent;
+import com.netherrack.api.event.player.PlayerTeleportEvent;
 import com.netherrack.api.event.player.PlayerToastEvent;
 import com.netherrack.api.form.Form;
 import com.netherrack.api.form.FormButtonImage;
 import com.netherrack.api.form.SimpleForm;
 import com.netherrack.api.form.SimpleFormResponse;
+import com.netherrack.api.item.InventoryClickAction;
+import com.netherrack.api.item.ItemStack;
 import com.netherrack.api.permission.Permission;
 import com.netherrack.api.permission.PermissionAttachment;
 import com.netherrack.api.permission.PermissionDefault;
@@ -69,6 +86,7 @@ public final class PluginApiTest {
         lifecycle();
         configRoundTrip();
         events();
+        playerEvents();
         forms();
 
         System.out.println(failures == 0 ? "All plugin API checks passed." : failures + " check(s) failed.");
@@ -76,12 +94,11 @@ public final class PluginApiTest {
     }
 
     private static void versions() {
-        check("current version", ApiVersion.CURRENT, "0.5.1");
-        check("older patch compatible", ApiVersion.isCompatible("0.5.0"), true);
-        check("current version compatible", ApiVersion.isCompatible("0.5.1"), true);
-        check("newer patch compatible", ApiVersion.isCompatible("0.5.7"), true);
-        check("snapshot compatible", ApiVersion.isCompatible("0.5.0-SNAPSHOT"), true);
-        check("older minor incompatible", ApiVersion.isCompatible("0.4.9"), false);
+        check("current version", ApiVersion.CURRENT, "0.6.0");
+        check("current version compatible", ApiVersion.isCompatible("0.6.0"), true);
+        check("newer patch compatible", ApiVersion.isCompatible("0.6.7"), true);
+        check("snapshot compatible", ApiVersion.isCompatible("0.6.0-SNAPSHOT"), true);
+        check("older minor incompatible", ApiVersion.isCompatible("0.5.9"), false);
         check("major incompatible", ApiVersion.isCompatible("1.0.0"), false);
         check("missing version incompatible", ApiVersion.isCompatible(null), false);
         check("garbage incompatible", ApiVersion.isCompatible("banana"), false);
@@ -282,6 +299,100 @@ public final class PluginApiTest {
         check("form event id", formEvent.getFormId(), 7);
         check("form event response", formEvent.getResponse(), "0");
         check("form event closed", formEvent.wasClosed(), false);
+    }
+
+    private static void playerEvents() {
+        StubPlayer player = new StubPlayer();
+
+        PlayerDamageEvent damage = new PlayerDamageEvent(player, DamageCause.LAVA, 4);
+        check("damage event name", damage.getEventName(), "PlayerDamageEvent");
+        check("damage cause", damage.getCause(), DamageCause.LAVA);
+        check("damage amount", damage.getAmount(), 4d);
+        check("original damage", damage.getOriginalAmount(), 4d);
+        damage.setAmount(-2);
+        check("negative damage clamped", damage.getAmount(), 0d);
+        damage.setCancelled(true);
+        check("damage cancellation", damage.isCancelled(), true);
+
+        PlayerDeathEvent death = new PlayerDeathEvent(player, DamageCause.FALL, "fell",
+                List.of(new ItemStack("minecraft:dirt", 2)));
+        check("death event name", death.getEventName(), "PlayerDeathEvent");
+        check("death cause", death.getCause(), DamageCause.FALL);
+        death.setDeathMessage("changed death");
+        check("death message changed", death.getDeathMessage(), "changed death");
+        death.getDrops().add(new ItemStack("minecraft:apple", 1));
+        check("death drops changed", death.getDrops().size(), 2);
+
+        Location spawn = new Location(10, 64, -5);
+        PlayerRespawnEvent respawn = new PlayerRespawnEvent(player, spawn);
+        respawn.setRespawnLocation(new Location(1, 2, 3));
+        check("respawn location", respawn.getRespawnLocation(), new Location(1, 2, 3));
+
+        Location from = new Location(0, 64, 0);
+        Location to = new Location(1, 64, 1);
+        PlayerMoveEvent move = new PlayerMoveEvent(player, from, to);
+        check("move from", move.getFrom(), from);
+        move.setTo(new Location(2, 64, 2));
+        check("move destination changed", move.getTo(), new Location(2, 64, 2));
+        move.setCancelled(true);
+        check("move cancellation", move.isCancelled(), true);
+
+        PlayerTeleportEvent teleport = new PlayerTeleportEvent(player, from, to,
+                TeleportCause.COMMAND);
+        check("teleport is a move", teleport instanceof PlayerMoveEvent, true);
+        check("teleport cause", teleport.getCause(), TeleportCause.COMMAND);
+        check("teleport event name", teleport.getEventName(), "PlayerTeleportEvent");
+
+        PlayerGameModeChangeEvent mode = new PlayerGameModeChangeEvent(player, GameMode.SURVIVAL,
+                GameMode.CREATIVE);
+        check("game mode from", mode.getFrom(), GameMode.SURVIVAL);
+        check("game mode to", mode.getTo(), GameMode.CREATIVE);
+        mode.setCancelled(true);
+        check("game mode cancellation", mode.isCancelled(), true);
+
+        ItemStack apple = new ItemStack("minecraft:apple", 1);
+        PlayerItemPickupEvent pickup = new PlayerItemPickupEvent(player, apple);
+        pickup.setCancelled(true);
+        check("pickup event name", pickup.getEventName(), "PlayerItemPickupEvent");
+        check("pickup cancellation", pickup.isCancelled(), true);
+        PlayerItemDropEvent drop = new PlayerItemDropEvent(player, apple);
+        drop.setItem(new ItemStack("minecraft:dirt", 3));
+        check("drop item changed", drop.getItem().getId(), "minecraft:dirt");
+        PlayerItemUseEvent use = new PlayerItemUseEvent(player, apple, 3, false,
+                new BlockPosition(1, 2, 3));
+        check("item use slot", use.getSlot(), 3);
+        check("item use position", use.getBlockPosition(), new BlockPosition(1, 2, 3));
+        use.setCancelled(true);
+        check("item use cancellation", use.isCancelled(), true);
+        PlayerInventoryClickEvent click = new PlayerInventoryClickEvent(player, 5, apple,
+                new ItemStack("minecraft:air", 0), InventoryClickAction.TAKE);
+        check("inventory click slot", click.getSlot(), 5);
+        check("inventory click action", click.getAction(), InventoryClickAction.TAKE);
+        click.setCancelled(true);
+        check("inventory click cancellation", click.isCancelled(), true);
+        PlayerItemConsumeEvent consume = new PlayerItemConsumeEvent(player, apple);
+        consume.setItem(new ItemStack("minecraft:bowl", 1));
+        check("consume item changed", consume.getItem().getId(), "minecraft:bowl");
+        consume.setCancelled(true);
+        check("consume cancellation", consume.isCancelled(), true);
+
+        player.setMeta("Prefix", "[Admin]");
+        check("metadata get", player.getPrefix(), "[Admin]");
+        check("metadata snapshot", player.getMeta().get("prefix"), "[Admin]");
+        player.removeMeta("prefix");
+        check("metadata removed", player.getPrefix(), null);
+        PlayerMetadataChangeEvent metadata = new PlayerMetadataChangeEvent(player, "suffix", "old",
+                "new");
+        metadata.setNewValue("changed");
+        check("metadata change value", metadata.getNewValue(), "changed");
+        metadata.setCancelled(true);
+        check("metadata cancellation", metadata.isCancelled(), true);
+
+        StubServer server = new StubServer(new RecordingLogger());
+        check("offline player by name", server.getOfflinePlayer("tester").getName(), "Tester");
+        check("offline player by xuid", server.getOfflinePlayer("xuid").getXuid(), "xuid");
+        check("offline player missing", server.getOfflinePlayer("nobody"), null);
+        check("offline players", server.getOfflinePlayers().size(), 1);
     }
 
     private static void forms() {
@@ -605,6 +716,7 @@ public final class PluginApiTest {
     }
 
     private static final class StubPlayer extends TestPermissible implements Player {
+        private final Map<String, String> meta = new LinkedHashMap<>();
         private Location location = new Location(0, 64, 0);
         private GameMode gameMode = GameMode.SURVIVAL;
         private Form shownForm;
@@ -685,7 +797,59 @@ public final class PluginApiTest {
         }
 
         @Override
+        public String getMeta(String key) {
+            return meta.get(key.toLowerCase(java.util.Locale.ROOT));
+        }
+
+        @Override
+        public void setMeta(String key, String value) {
+            String lower = key.toLowerCase(java.util.Locale.ROOT);
+            if (value == null) {
+                meta.remove(lower);
+            } else {
+                meta.put(lower, value);
+            }
+        }
+
+        @Override
+        public void removeMeta(String key) {
+            meta.remove(key.toLowerCase(java.util.Locale.ROOT));
+        }
+
+        @Override
+        public Map<String, String> getMeta() {
+            return Map.copyOf(meta);
+        }
+
+        @Override
         public void kick(String reason) {
+        }
+    }
+
+    private static final class StubOfflinePlayer implements OfflinePlayer {
+        @Override
+        public String getName() {
+            return "Tester";
+        }
+
+        @Override
+        public UUID getUuid() {
+            return UUID.nameUUIDFromBytes("Tester".getBytes());
+        }
+
+        @Override
+        public String getXuid() {
+            return "xuid";
+        }
+
+        @Override
+        public boolean isOnline() {
+            return false;
+        }
+
+        @Override
+        public Player getPlayer() {
+            return null;
         }
     }
 
@@ -724,6 +888,24 @@ public final class PluginApiTest {
         @Override
         public Collection<Player> getPlayers() {
             return List.of();
+        }
+
+        @Override
+        public OfflinePlayer getOfflinePlayer(String nameOrXuid) {
+            return nameOrXuid != null
+                    && (nameOrXuid.equalsIgnoreCase("Tester") || nameOrXuid.equals("xuid"))
+                    ? new StubOfflinePlayer() : null;
+        }
+
+        @Override
+        public OfflinePlayer getOfflinePlayer(UUID uuid) {
+            return uuid != null && uuid.equals(new StubOfflinePlayer().getUuid())
+                    ? new StubOfflinePlayer() : null;
+        }
+
+        @Override
+        public Collection<OfflinePlayer> getOfflinePlayers() {
+            return List.of(new StubOfflinePlayer());
         }
 
         @Override

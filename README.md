@@ -25,7 +25,7 @@ JitPack builds the artifact directly from a git tag:
     <dependency>
         <groupId>com.github.NetherrackOSS</groupId>
         <artifactId>NetherrackAPI</artifactId>
-        <version>v0.5.1-SNAPSHOT</version>
+        <version>v0.6.0-SNAPSHOT</version>
         <scope>provided</scope>
     </dependency>
 </dependencies>
@@ -41,7 +41,7 @@ copy.
 ```yaml
 name: HelloPlugin
 version: 1.0.0
-api-version: 0.5.1
+api-version: 0.6.0
 main: com.example.hello.HelloPlugin
 description: Says hello when enabled
 author: You
@@ -102,7 +102,7 @@ events expose `setCancelled(boolean)`; by default handlers with `ignoreCancelled
 skipped once an earlier handler cancels. Listeners for a base class such as `PlayerEvent` receive
 all of its subclasses. When a plugin is disabled, all of its handlers are unregistered.
 
-The first events are:
+The events available are:
 
 - `ServerStartEvent`, `ServerStopEvent`
 - `PlayerLoginEvent`, `PlayerJoinEvent`, `PlayerQuitEvent`, `PlayerChatEvent`,
@@ -110,10 +110,16 @@ The first events are:
 - `PlayerActionBarEvent`, `PlayerToastEvent`, `PlayerPopupEvent`
 - `BlockPlaceEvent`, `BlockBreakEvent`
 - `PlayerFormRespondedEvent`
+- `PlayerDamageEvent`, `PlayerDeathEvent`, `PlayerRespawnEvent`
+- `PlayerMoveEvent`, `PlayerTeleportEvent`, `PlayerGameModeChangeEvent`
+- `PlayerInventoryClickEvent`, `PlayerItemPickupEvent`, `PlayerItemDropEvent`, `PlayerItemUseEvent`,
+  `PlayerItemConsumeEvent`
+- `PlayerMetadataChangeEvent`
 
 Events are delivered synchronously on the thread doing the action: startup events on the main
-startup thread, shutdown events on the shutdown thread, and player and block events on that
-player's network thread. A handler should return quickly; use the scheduler for delayed work.
+startup thread, shutdown events on the shutdown thread, network-driven player and block events on
+that player's network thread, and survival/tick events such as damage, pickup and consumption on
+the server tick. A handler should return quickly; use the scheduler for delayed work.
 
 ## Players, worlds and blocks
 
@@ -143,6 +149,19 @@ immutable `BlockSnapshot` values. A snapshot keeps the block's identifier, its v
 and its properties, so a plugin can inspect `getState("facing")` or pass the same snapshot back to
 `setBlock` without depending on protocol classes. Passing `null` to `setBlock` clears a block to
 air. `GameMode` ids match Bedrock's: survival 0, creative 1, adventure 2 and spectator 6.
+
+Players also carry untyped string metadata. Keys are case-insensitive, a null value removes the key,
+and changing a connected player's value fires `PlayerMetadataChangeEvent` first:
+
+```java
+player.setPrefix("[Admin]");
+player.setMeta("rank", "vip");
+String rank = player.getMeta("rank");
+```
+
+`Server.getOfflinePlayer(...)` looks up identities the server has seen. An `OfflinePlayer` exposes
+the last known name, UUID and XUID plus `isOnline()`/`getPlayer()`; it does not expose saved
+inventories or locations. It is meant for permission and ban plugins, not as a world save API.
 
 ## Commands
 

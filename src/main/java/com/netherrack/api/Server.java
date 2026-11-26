@@ -1,5 +1,6 @@
 package com.netherrack.api;
 
+import com.netherrack.api.entity.OfflinePlayer;
 import com.netherrack.api.entity.Player;
 import com.netherrack.api.permission.PermissionManager;
 import com.netherrack.api.plugin.PluginLogger;
@@ -8,6 +9,7 @@ import com.netherrack.api.scheduler.Scheduler;
 import com.netherrack.api.world.World;
 
 import java.util.Collection;
+import java.util.UUID;
 
 /**
  * The server a plugin runs on, as seen through the API.
@@ -34,6 +36,18 @@ public interface Server {
 
     /** The players currently registered on the server. */
     Collection<Player> getPlayers();
+
+    /**
+     * The identity with this case-insensitive name or exact XUID, or null when the server has never
+     * seen it. Online players are always found.
+     */
+    OfflinePlayer getOfflinePlayer(String nameOrXuid);
+
+    /** The identity with this UUID, or null when the server has never seen it. */
+    OfflinePlayer getOfflinePlayer(UUID uuid);
+
+    /** Every identity the server knows about, online and offline. */
+    Collection<OfflinePlayer> getOfflinePlayers();
 
     /** The plugin task scheduler, whose tasks run on the server tick. */
     Scheduler getScheduler();

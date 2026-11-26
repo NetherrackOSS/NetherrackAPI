@@ -1,5 +1,7 @@
 package com.netherrack.api.world;
 
+import java.util.Objects;
+
 /** An immutable block coordinate, independent of the protocol library's vector types. */
 public final class BlockPosition {
 
@@ -23,6 +25,22 @@ public final class BlockPosition {
 
     public int getZ() {
         return z;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof BlockPosition position)) {
+            return false;
+        }
+        return x == position.x && y == position.y && z == position.z;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(x, y, z);
     }
 
     @Override

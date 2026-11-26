@@ -6,10 +6,10 @@
 
     <!-- JitPack publishes this as com.github.NetherrackOSS.NetherrackAPI:<tag>, whatever the
          coordinates below say, so the artifact id matches the repository name. The version is
-         the local development version; releases are made by tagging v0.5.1-SNAPSHOT. -->
+         the local development version; releases are made by tagging v0.6.0-SNAPSHOT. -->
     <groupId>com.netherrack</groupId>
     <artifactId>NetherrackAPI</artifactId>
-    <version>0.5.1-SNAPSHOT</version>
+    <version>0.6.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <name>Netherrack API</name>
